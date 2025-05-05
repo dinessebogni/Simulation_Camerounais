@@ -1,16 +1,15 @@
-globals [
-   individu-selectionne
-   selected-attribut
-]
+breed [individus individu]
+breed [dechets dechet]
+breed [camions camion]
+breed [centres-tri centre-tri]
 
-turtles-own [
-  role
+individus-own [
   age
   situation-matrimoniale
   nombre-repas
   salaire
   condition-physique
-  moyen-de-deplacement
+  moyen-deplacement
   personnalite
   type-repas
   quartier
@@ -20,170 +19,234 @@ turtles-own [
   metier
   hobbies
   milieux-frequentes
-
-  dechets-alimentaires
-  dechets-plastiques
-  dechets-papiers
-  dechets-autres
+  sensibilise?       ; influencé ou non
+  quantite-dechets
 ]
 
-to choisir-individu
-  set individu-selectionne one-of turtles with [role = "individu"]
-  set selected-attribut "age"  ;; Attribut par défaut
-end
+dechets-own [
+  type-dechet     ; "organique", "plastique", etc.
+  producteur-id   ; qui a généré ce déchet
+]
+
+camions-own [
+  capacite
+  contenu          ; liste des déchets collectés
+]
+
+centres-tri-own [
+  stock-dechets    ; liste ou compte des types reçus
+]
 
 to setup
   clear-all
-  create-turtles count_personne [
-    set role "individu"
-    setxy random-xcor random-ycor
-    assign-individu-attributes
-    set shape "person"
-    set color blue
-  ]
-  create-turtles count_déchets [
-    set role "dechet"
-    setxy random-xcor random-ycor
-    set shape "square"
-    set color red
-  ]
-  create-turtles count_quartier [
-    set role "quartier"
-    setxy random-xcor random-ycor
-    set shape "house"
-    set color green
-  ]
+  setup-individus
+  setup-centres
+  setup-camions
+  update-graph
   reset-ticks
 end
 
-to-report get-value-attribut [agent attribut]
-  if agent = nobody [report "Aucun individu"]
-
-  ;; Vérifier si l'attribut est valide et renvoyer la bonne valeur
-  if attribut = "age" [report [age] of agent]
-  if attribut = "situation-matrimoniale" [report [situation-matrimoniale] of agent]
-  if attribut = "salaire" [report [salaire] of agent]
-  if attribut = "nombre-repas" [report [nombre-repas] of agent]
-  if attribut = "statut-social" [report [statut-social] of agent]
-  if attribut = "condition-physique" [report [condition-physique] of agent]
-  if attribut = "moyen-de-deplacement" [report [moyen-de-deplacement] of agent]
-  if attribut = "personnalite" [report [personnalite] of agent]
-  if attribut = "type-repas" [report [type-repas] of agent]
-  if attribut = "quartier" [report [quartier] of agent]
-  if attribut = "compagnie-habituelle" [report [compagnie-habituelle] of agent]
-  if attribut = "niveau-etude" [report [niveau-etude] of agent]
-  if attribut = "metier" [report [metier] of agent]
-  if attribut = "hobbies" [report liste-en-texte [hobbies] of agent]
-  if attribut = "milieux-frequentes" [report liste-en-texte [milieux-frequentes] of agent]
-
-  report "Inconnu"  ;; Si aucun attribut valide n'est trouvé
+to setup-individus
+  create-individus nb-individus [
+    set quantite-dechets 0
+    setxy random-xcor random-ycor
+    set age random 80
+    set situation-matrimoniale one-of ["célibataire" "marié" "divorcé"]
+    set nombre-repas one-of [1 2 3]
+    set salaire random 500000
+    set condition-physique one-of ["bonne" "moyenne" "mauvaise"]
+    set moyen-deplacement one-of ["marche" "moto" "voiture"]
+    set personnalite one-of ["responsable" "négligent" "économe"]
+    set type-repas one-of ["traditionnel" "moderne"]
+    set quartier one-of ["centre-ville" "banlieue" "rural"]
+    set compagnie-habituelle one-of ["famille" "amis" "seul"]
+    set statut-social one-of ["élevé" "moyen" "faible"]
+    set niveau-etude one-of ["primaire" "secondaire" "universitaire"]
+    set metier one-of ["ouvrier" "fonctionnaire" "étudiant"]
+    set hobbies one-of ["sport" "lecture" "musique"]
+    set milieux-frequentes one-of ["marché" "bureau" "maison"]
+    set sensibilise? false
+    set shape "person"
+    set color green
+  ]
 end
 
-to-report liste-en-texte [liste]
-  if empty? liste [ report "" ]  ;;
-
-  report reduce [ [a b] -> (word a ", " b) ] liste  ;;
+to setup-centres
+  create-centres-tri 4 [
+    setxy random-xcor random-ycor
+    set color yellow
+    set shape "house"
+    set stock-dechets ""
+  ]
 end
 
-to assign-individu-attributes
-  set age random 53 + 18
-  set situation-matrimoniale one-of ["célibataire" "marié" "divorcé"]
-  set nombre-repas 1 + random 3
-  set salaire 50000 + random 450000
-  set condition-physique one-of ["bonne" "moyenne" "mauvaise"]
-  set moyen-de-deplacement one-of ["à pied" "moto" "voiture" "transport en commun"]
-  set personnalite one-of ["économe" "gaspilleur" "écologique"]
-  set type-repas one-of ["traditionnel" "moderne" "mixte"]
-  set quartier one-of ["Bastos" "Essos" "Melen" "Nkoldongo"]
-  set compagnie-habituelle one-of ["seul" "amis" "famille" "collègues"]
-  set statut-social one-of ["bas" "moyen" "élevé"]
-  set niveau-etude one-of ["primaire" "secondaire" "universitaire"]
-  set metier one-of ["enseignant" "vendeur" "étudiant" "fonctionnaire" "artisan"]
-  set hobbies n-of 2 ["sport" "lecture" "cinéma" "jeux" "marche" "cuisine"]
-  set milieux-frequentes n-of 2 ["marché" "bureau" "bar" "maison" "église"]
-  set dechets-alimentaires 0
-  set dechets-plastiques 0
-  set dechets-papiers 0
-  set dechets-autres 0
+to setup-camions
+  create-camions 5 [
+    setxy random-xcor random-ycor
+    set color red
+    set shape "truck"
+    set capacite 20
+    set contenu []
+  ]
 end
 
 to go
-  ask turtles with [role = "individu"] [
-    routine-journaliere
+  ; étape 1 : les individus produisent des déchets
+  produire-dechets
+
+  ; étape 2 : campagne de sensibilisation (aléatoire ou régulière)
+  if ticks mod 10 = 0 [
+    campagne-sensibilisation
   ]
+
+  ; étape 3 : les camions collectent les déchets proches
+  collecte-dechets
+
+  ; étape 4 : les camions apportent les déchets aux centres de tri
+  envoyer-centres
+
+  ; Exporter les données après chaque cycle
+  export-data
   tick
-  update-plot-quartiers
 end
 
-to routine-journaliere
-  let d-alim nombre-repas * (0.2 + random-float 0.3)
-  set dechets-alimentaires dechets-alimentaires + d-alim
-  creer-dechet "alimentaire" d-alim
-
-  if moyen-de-deplacement != "à pied" [
-    let d-plast 0.1 + random-float 0.2
-    set dechets-plastiques dechets-plastiques + d-plast
-    creer-dechet "plastique" d-plast
-  ]
-
-  if member? "bureau" milieux-frequentes [
-    let d-papier 0.05 + random-float 0.15
-    set dechets-papiers dechets-papiers + d-papier
-    creer-dechet "papier" d-papier
-  ]
-
-  let d-autre 0
-  if personnalite = "gaspilleur" [ set d-autre 0.2 + random-float 0.2 ]
-  if personnalite = "économe" [ set d-autre 0.05 + random-float 0.05 ]
-  if personnalite = "écologique" [ set d-autre 0.1 + random-float 0.1 ]
-  set dechets-autres dechets-autres + d-autre
-  creer-dechet "autres" d-autre
-end
-
-to update-plot-quartiers
-  set-current-plot "Déchets par quartier"
-
-  foreach ["Bastos" "Essos" "Melen" "Nkoldongo"] [
-    quartier-name ->
-    set-current-plot-pen quartier-name
-
-    ;; Calculer la somme des déchets pour chaque quartier
-    let total-dechets sum [
-      dechets-alimentaires + dechets-plastiques + dechets-papiers + dechets-autres
-    ] of turtles with [role = "individu" and quartier = quartier-name]
-
-    ;; Afficher le total des déchets pour le quartier
-    plot total-dechets
+to produire-dechets
+  ask individus [
+    let dechet-type one-of ["organique" "plastique" "papier" "métal" "divers"]
+    hatch-dechets 1 [
+      set shape "dot"
+      ; Attribution de couleur basée sur le type de déchet
+      ifelse dechet-type = "organique" [
+        set color brown
+      ]
+      [
+        ifelse dechet-type = "plastique" [
+          set color blue
+        ]
+        [
+          ifelse dechet-type = "papier" [
+            set color white
+          ]
+          [
+            ifelse dechet-type = "métal" [
+              set color gray
+            ]
+            [
+              set color black  ; Par défaut pour "divers"
+            ]
+          ]
+        ]
+      ]
+      set type-dechet dechet-type
+      set producteur-id self  ; Attribution de l'individu comme producteur du déchet
+      rt random 360
+      fd 1
+    ]
+    ; Incrémenter la quantité de déchets de l'individu après avoir produit un déchet
+    set quantite-dechets quantite-dechets + 1  ; L'individu a produit un déchet de plus
   ]
 end
 
-to creer-dechet [type-dechet quantite]
-  repeat floor quantite [
-    hatch 1 [
-      set role "dechet"
-      set shape (ifelse-value
-                 type-dechet = "alimentaire" [ "circle" ]
-                 type-dechet = "plastique"   [ "square" ]
-                 type-dechet = "papier"      [ "triangle" ]
-                 [ "star" ])
-
-      set color (ifelse-value
-                 type-dechet = "alimentaire" [ green ]
-                 type-dechet = "plastique"   [ blue ]
-                 type-dechet = "papier"      [ yellow ]
-                 [ red ])
+to campagne-sensibilisation
+  ask individus [
+    if random-float 1 < 0.5 [
+      set sensibilise? true
+      set color cyan
     ]
   ]
 end
+
+to collecte-dechets
+  ask camions [
+    ; Collecte des déchets des individus proches
+    let individus-proches individus with [distance myself < 5]  ; Trouver les individus proches
+    ask individus-proches [
+      if quantite-dechets > 0 [  ; Si l'individu a des déchets à donner
+        let dechet-type one-of ["organique" "plastique" "papier" "métal" "divers"]  ; Choisir le type de déchet
+        ask myself [
+          set contenu fput dechet-type contenu  ; Le camion collecte le déchet
+        ]
+        set quantite-dechets quantite-dechets - 1  ; L'individu perd un déchet
+      ]
+    ]
+  ]
+end
+
+to envoyer-centres
+  ask camions [
+    move-to one-of centres-tri
+    ; Transférer les déchets collectés vers le centre de tri
+    ask one-of centres-tri [
+      ; Compter les déchets collectés et mettre à jour le stock du centre
+      set stock-dechets (word
+                          "organique: " (count (dechets with [type-dechet = "organique" and member? self [producteur-id] of dechets]))
+                         ", plastique: " (count (dechets with [type-dechet = "plastique" and member? self [producteur-id] of dechets]))
+                         ", papier: " (count (dechets with [type-dechet = "papier" and member? self [producteur-id] of dechets]))
+                         ", métal: " (count (dechets with [type-dechet = "métal" and member? self [producteur-id] of dechets]))
+                         ", divers: " (count (dechets with [type-dechet = "divers" and member? self [producteur-id] of dechets])) )
+    ]
+    ; Vider le contenu du camion après le dépôt
+    set contenu []
+  ]
+end
+
+to export-data
+  ; Calculer l'année à partir des ticks
+  let year (floor ticks / 365)  ; Année (approximée sur 365 jours)
+
+  ; Calculer le mois à partir des ticks
+  let month (1 + (floor (ticks mod 365) / 30))  ; Mois approximatif (environ 30 jours par mois)
+
+  ; Calculer le jour à partir des ticks
+  let day (ticks mod 30)  ; Jour dans le mois (reste des jours du mois)
+
+  ; Créer une chaîne de caractères avec la date (format année-mois-jour)
+  let current-date (word year "-" month "-" day)
+
+  ; Ouvrir le fichier CSV
+  file-open "C:\\Users\\HEMIRA\\Documents\\simulation\\donnees_simulation.csv"
+
+  ; Écrire l'en-tête avec la date et l'heure d'exportation
+  file-print (word "Date d'exportation: " current-date)
+  file-print "ID,Age,Situation Matrimoniale,Nombre de Repas,Salaire,Condition Physique,Moyen de Déplacement,Personnalité,Type de Repas,Quartier,Compagnie Habituelle,Statut Social,Niveau d'Étude,Métier,Hobbies,Milieux Fréquentés,Quantité de Déchets"
+
+  ; Écrire les données de chaque individu sous forme de tableau
+  ask individus [
+    file-print (word who "," age "," situation-matrimoniale "," nombre-repas "," salaire "," condition-physique "," moyen-deplacement "," personnalite "," type-repas "," quartier "," compagnie-habituelle "," statut-social "," niveau-etude "," metier "," hobbies "," milieux-frequentes "," quantite-dechets)
+  ]
+
+  ; Fermer le fichier une fois l'écriture terminée
+  file-close
+end
+
+to update-graph
+  set-current-plot "Évolution des déchets"
+
+  ; Affichage du nombre de déchets par type
+  set-current-plot-pen "organique"
+  plot count dechets with [type-dechet = "organique"]
+
+  set-current-plot-pen "plastique"
+  plot count dechets with [type-dechet = "plastique"]
+
+  set-current-plot-pen "papier"
+  plot count dechets with [type-dechet = "papier"]
+
+  set-current-plot-pen "métal"
+  plot count dechets with [type-dechet = "métal"]
+
+  set-current-plot-pen "divers"
+  plot count dechets with [type-dechet = "divers"]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-977
+895
 10
-1492
-526
+1479
+595
 -1
 -1
-15.364
+17.455
 1
 10
 1
@@ -203,12 +266,27 @@ GRAPHICS-WINDOW
 ticks
 30.0
 
+SLIDER
+188
+101
+360
+134
+nb-individus
+nb-individus
+10
+500
+50.0
+10
+1
+NIL
+HORIZONTAL
+
 BUTTON
-47
-56
-165
-89
-Setup
+48
+63
+120
+99
+setup
 setup
 NIL
 1
@@ -221,11 +299,11 @@ NIL
 1
 
 BUTTON
-44
-159
-167
-193
-Go
+48
+123
+122
+157
+go
 go
 T
 1
@@ -237,184 +315,13 @@ NIL
 NIL
 1
 
-SLIDER
-192
-88
-357
-121
-count_personne
-count_personne
-0
-100
-90.0
-10
-1
-NIL
-HORIZONTAL
-
-MONITOR
-580
-56
-758
-101
-dechets-alimentaires
-mean [dechets-alimentaires] of turtles
-17
-1
-11
-
-MONITOR
-580
-118
-758
-163
-dechets-plastiques
-mean [dechets-plastiques] of turtles
-17
-1
-11
-
-MONITOR
-787
-58
-965
-103
-dechets-papiers
-mean [dechets-papiers] of turtles
-17
-1
-11
-
-MONITOR
-788
-119
-965
-164
-dechets-autres
-mean [dechets-autres] of turtles
-17
-1
-11
-
-PLOT
-0
-559
-237
-723
-Évolution des déchets
-Time
-Quantité
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" "set-current-plot-pen \"alimentaire\"\nplot sum [dechets-alimentaires] of turtles with [role = \"individu\"]\n\nset-current-plot-pen \"plastique\"\nplot sum [dechets-plastiques] of turtles with [role = \"individu\"]\n\nset-current-plot-pen \"papier\"\nplot sum [dechets-papiers] of turtles with [role = \"individu\"]\n\nset-current-plot-pen \"autres\"\nplot sum [dechets-autres] of turtles with [role = \"individu\"]\n"
-PENS
-"alimentaire" 1.0 0 -2674135 true "" ""
-"plastique" 1.0 0 -7500403 true "" ""
-"papier" 1.0 0 -13345367 true "" ""
-"autres" 1.0 0 -16777216 true "" ""
-
-PLOT
-241
-559
-464
-723
-Déchets par quartier
-Time
-Quartier
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" "foreach [\"Bastos\" \"Essos\" \"Melen\" \"Nkoldongo\"] [\n  quartier-name ->\n  set-current-plot-pen quartier-name\n  let total-dechets sum [\n    dechets-alimentaires + dechets-plastiques + dechets-papiers + dechets-autres\n  ] of turtles with [role = \"individu\" and quartier = quartier-name]\n  plot total-dechets\n]\n"
-PENS
-"Bastos" 1.0 1 -1184463 true "" ""
-"Essos" 1.0 1 -13403783 true "" ""
-"Melen" 1.0 1 -13345367 true "" ""
-"Nkoldongo" 1.0 1 -16777216 true "" ""
-
-PLOT
-492
-562
-710
-725
-Déchets par personnalité
-Time
-Personnalité
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" "to plot-dechets-par-personnalite\n  set-current-plot \"Déchets par personnalité\"\n  let personnalites [\"économe\" \"gaspilleur\" \"écologique\"]\n  clear-plot\n  let personnalites-numeriques [0 1 2]\n  foreach personnalites-numeriques [\n    idx -> \n    let personnalite-nom (item idx personnalites)\n    plotxy idx (count dechets with [ [personnalite] of producteur = personnalite-nom ])\n  ]\nend"
-PENS
-"économe" 1.0 1 -10899396 true "" ""
-"gaspilleur" 1.0 1 -13345367 true "" ""
-"écologique" 1.0 1 -2674135 true "" ""
-
-SLIDER
-192
-136
-359
-169
-count_déchets
-count_déchets
-0
-100
-100.0
-2
-1
-NIL
-HORIZONTAL
-
-SLIDER
-192
-183
-361
-216
-count_quartier
-count_quartier
-0
-100
-100.0
-2
-1
-NIL
-HORIZONTAL
-
-PLOT
-720
-565
-933
-725
-Déchets par statut social
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" "foreach [\"bas\" \"moyen\" \"élevé\"] [\n  statut ->\n  set-current-plot-pen statut\n  let total-dechets sum [\n    dechets-alimentaires + dechets-plastiques + dechets-papiers + dechets-autres\n  ] of turtles with [role = \"individu\" and statut-social = statut]\n  plot total-dechets\n]\n"
-PENS
-"bas" 1.0 0 -2674135 true "" ""
-"moyen" 1.0 0 -13791810 true "" ""
-"élevé" 1.0 0 -2754856 true "" ""
-
 BUTTON
-46
-105
-166
-141
-Choisir un individu
-choisir-individu\n
+48
+184
+169
+217
+produire-dechets
+produire-dechets
 NIL
 1
 T
@@ -426,54 +333,123 @@ NIL
 1
 
 PLOT
-397
-188
-918
-518
-Déchets par attribut
-Attributs
+351
+328
+832
+604
+Évolution des déchets
+Temps
 Quantité de déchets
 0.0
 10.0
 0.0
 10.0
 true
-false
-"" "if individu-selectionne != nobody [\n  clear-plot\n  \n  let total-dechets (\n    ([dechets-alimentaires] of individu-selectionne) +\n    ([dechets-plastiques] of individu-selectionne) +\n    ([dechets-papiers] of individu-selectionne) +\n    ([dechets-autres] of individu-selectionne)\n  )\n  \n  let x-value 0\n  \n  if attribut-selectionne = \"age\" [ set x-value [age] of individu-selectionne ]\n  if attribut-selectionne = \"salaire\" [ set x-value [salaire] of individu-selectionne ]\n  if attribut-selectionne = \"nombre-repas\" [ set x-value [nombre-repas] of individu-selectionne ]\n  \n  ; Pour les attributs textuels, on peut assigner une valeur numérique\n  if attribut-selectionne = \"statut-social\" [\n    let val [statut-social] of individu-selectionne\n    set x-value (position val [\"bas\" \"moyen\" \"élevé\"])\n  ]\n  \n  ; Ajoute ici les autres cas si tu veux les mapper aussi\n  \n  plotxy x-value total-dechets\n]\n"
+true
+"" "plot count dechets with [type-dechet = \"organique\"]\nplot count dechets with [type-dechet = \"plastique\"]\nplot count dechets with [type-dechet = \"papier\"]\nplot count dechets with [type-dechet = \"métal\"]\nplot count dechets with [type-dechet = \"divers\"]"
 PENS
-"individu" 1.0 1 -13345367 true "" ""
+"organique" 1.0 0 -16777216 true "" ""
+"plastique" 1.0 0 -7500403 true "" ""
+"papier" 1.0 0 -1184463 true "" ""
+"métal" 1.0 0 -13345367 true "" ""
+"divers" 1.0 0 -2674135 true "" ""
+
+BUTTON
+184
+238
+347
+271
+campagne-sensibilisation
+campagne-sensibilisation
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+185
+185
+302
+218
+collecte-dechets
+collecte-dechets
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+48
+237
+165
+270
+envoyer-centres
+envoyer-centres
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 MONITOR
-387
-116
-552
-161
-selected-attribut
-ifelse-value individu-selectionne != nobody\n  [ get-value-attribut individu-selectionne selected-attribut ]\n  [ \"Aucun individu sélectionné\" ]
+396
+95
+565
+140
+quantite-dechets
+sum [quantite-dechets] of individus
 17
 1
 11
 
-MONITOR
-388
-56
-551
-101
-individu-selectionne 
-individu-selectionne
-17
+BUTTON
+598
+95
+736
+141
+exporter-données
+export-data\n
+NIL
 1
-11
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
-CHOOSER
-193
-31
-356
-76
-attribut-selectionne
-attribut-selectionne
-"age" "salaire" "nombre-repas" "statut-social" "situation-matrimoniale" "condition-physique" "moyen-de-deplacement" "personnalite" "type-repas" "quartier" "compagnie-habituelle" "niveau-etude" "metier" "hobbies" "milieux-frequentes"
-9
+PLOT
+24
+394
+337
+605
+Déchets produits
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"Total" 1.0 0 -16777216 true "" "plot count turtles"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -662,16 +638,6 @@ Rectangle -16777216 true false 120 210 180 285
 Polygon -7500403 true true 15 120 150 15 285 120
 Line -16777216 false 30 120 270 120
 
-house efficiency
-false
-0
-Rectangle -7500403 true true 180 90 195 195
-Rectangle -7500403 true true 90 165 210 255
-Rectangle -16777216 true false 165 195 195 255
-Rectangle -16777216 true false 105 202 135 240
-Polygon -7500403 true true 225 165 75 165 150 90
-Line -16777216 false 75 165 225 165
-
 leaf
 false
 0
@@ -713,13 +679,6 @@ Polygon -7500403 true true 165 180 165 210 225 180 255 120 210 135
 Polygon -7500403 true true 135 105 90 60 45 45 75 105 135 135
 Polygon -7500403 true true 165 105 165 135 225 105 255 45 210 60
 Polygon -7500403 true true 135 90 120 45 150 15 180 45 165 90
-
-quartier
-true
-0
-Rectangle -7500403 true true 90 120 120 150
-Polygon -7500403 true true 75 120 75 120 75 120 135 120 105 90 75 120
-Circle -16777216 true false 105 135 0
 
 sheep
 false
