@@ -1,7 +1,11 @@
+extensions [csv]
+
 breed [individus individu]
 breed [dechets dechet]
+breed [agents-sensibilisateurs agent-sensibilisateur]
 breed [camions camion]
-breed [centres-tri centre-tri]
+breed [centres centre]
+breed [lieux lieu]
 
 individus-own [
   age
@@ -18,235 +22,254 @@ individus-own [
   niveau-etude
   metier
   hobbies
-  milieux-frequentes
-  sensibilise?       ; influencé ou non
-  quantite-dechets
-]
-
-dechets-own [
-  type-dechet     ; "organique", "plastique", etc.
-  producteur-id   ; qui a généré ce déchet
+  milieux-frequente
+  niveau-sensibilisation
+  taux-production-dechets
+  lieu-assigné
 ]
 
 camions-own [
-  capacite
-  contenu          ; liste des déchets collectés
+  capacite-max
+  charge-actuelle
+  destination
+  total-dechets-collectes
 ]
 
-centres-tri-own [
-  stock-dechets    ; liste ou compte des types reçus
+lieux-own [
+  nom-lieu
 ]
+
+centres-own [
+  identifiant
+]
+
+agents-sensibilisateurs-own []
 
 to setup
   clear-all
-  setup-individus
-  setup-centres
-  setup-camions
-  update-graph
-  reset-ticks
-end
 
-to setup-individus
-  create-individus nb-individus [
-    set quantite-dechets 0
+ ;; Création des lieux (quartier, entreprise, etc.)
+  create-lieux 5 [
     setxy random-xcor random-ycor
-    set age random 80
-    set situation-matrimoniale one-of ["célibataire" "marié" "divorcé"]
-    set nombre-repas one-of [1 2 3]
-    set salaire random 500000
-    set condition-physique one-of ["bonne" "moyenne" "mauvaise"]
-    set moyen-deplacement one-of ["marche" "moto" "voiture"]
-    set personnalite one-of ["responsable" "négligent" "économe"]
-    set type-repas one-of ["traditionnel" "moderne"]
-    set quartier one-of ["centre-ville" "banlieue" "rural"]
-    set compagnie-habituelle one-of ["famille" "amis" "seul"]
-    set statut-social one-of ["élevé" "moyen" "faible"]
-    set niveau-etude one-of ["primaire" "secondaire" "universitaire"]
-    set metier one-of ["ouvrier" "fonctionnaire" "étudiant"]
-    set hobbies one-of ["sport" "lecture" "musique"]
-    set milieux-frequentes one-of ["marché" "bureau" "maison"]
-    set sensibilise? false
-    set shape "person"
-    set color green
+    set color grey
+    set shape "house"
+    set size 2
+    set nom-lieu one-of ["quartier" "entreprise" "industrie" "marché" "autres"]
   ]
-end
 
-to setup-centres
-  create-centres-tri 4 [
+  ;; Création des centres de tri
+  create-centres 3 [
     setxy random-xcor random-ycor
     set color yellow
-    set shape "house"
-    set stock-dechets ""
+    set shape "circle"
+    set size 2
+    set identifiant who
   ]
-end
 
-to setup-camions
-  create-camions 5 [
+  ;; Création des camions
+  create-camions nb-camions [
     setxy random-xcor random-ycor
     set color red
     set shape "truck"
-    set capacite 20
-    set contenu []
+    set size 1.5
+    set capacite-max 20
+    set charge-actuelle 0
+    set total-dechets-collectes 0
+    set destination one-of centres
   ]
+
+  ;; Création des individus et assignation à des lieux
+  create-individus nb-individus [
+    let assigned-lieu one-of lieux
+    setxy ([xcor] of assigned-lieu + random-float 2 - 1) ([ycor] of assigned-lieu + random-float 2 - 1)
+    set color blue
+    set shape "person"
+    set size 1.5
+    set age random 80
+    set situation-matrimoniale one-of ["célibataire" "marié(e)" "divorcé(e)"]
+    set nombre-repas 1 + random 3
+    set salaire 20000 + random 200000
+    set condition-physique one-of ["bonne" "moyenne" "faible"]
+    set moyen-deplacement one-of ["à pied" "moto" "voiture" "transport en commun"]
+    set personnalite one-of ["économe" "gaspilleur" "modéré"]
+    set type-repas one-of ["traditionnel" "moderne" "mixte"]
+    set quartier one-of ["centre-ville" "périphérie" "quartier populaire"]
+    set compagnie-habituelle one-of ["seul" "famille" "amis" "collègues"]
+    set statut-social one-of ["modeste" "moyen" "aisé"]
+    set niveau-etude random 7
+    set metier one-of ["ouvrier" "fonctionnaire" "étudiant" "vendeur" "sans emploi"]
+    set hobbies one-of ["sport" "lecture" "cinéma" "cuisine" "aucun"]
+    set milieux-frequente one-of ["marché" "bureau" "bar" "église" "domicile"]
+    set niveau-sensibilisation random-float 0.5
+    set taux-production-dechets random-float 1.0
+    set lieu-assigné assigned-lieu
+  ]
+
+  ;; Création des agents sensibilisateurs
+  create-agents-sensibilisateurs 5 [
+    setxy random-xcor random-ycor
+    set color green
+    set shape "square"
+    set size 2
+  ]
+
+  reset-ticks
 end
 
 to go
-  ; étape 1 : les individus produisent des déchets
   produire-dechets
-
-  ; étape 2 : campagne de sensibilisation (aléatoire ou régulière)
-  if ticks mod 10 = 0 [
-    campagne-sensibilisation
-  ]
-
-  ; étape 3 : les camions collectent les déchets proches
+  sensibiliser-individus
   collecte-dechets
-
-  ; étape 4 : les camions apportent les déchets aux centres de tri
-  envoyer-centres
-
-  ; Exporter les données après chaque cycle
-  export-data
+  plot-total-dechets-collectes
+  plot-dechets-restants
   tick
 end
 
 to produire-dechets
   ask individus [
-    let dechet-type one-of ["organique" "plastique" "papier" "métal" "divers"]
-    hatch-dechets 1 [
-      set shape "dot"
-      ; Attribution de couleur basée sur le type de déchet
-      ifelse dechet-type = "organique" [
+    let base 1 + nombre-repas
+    let facteur-salaire (salaire / 200000)
+    let facteur-education (1 - (niveau-etude / 6))
+    let facteur-personnalite (ifelse-value (personnalite = "gaspilleur") [1.5] [ifelse-value (personnalite = "économe") [0.5] [1.0]])
+    let facteur-sensibilisation (1 - niveau-sensibilisation)
+
+    set taux-production-dechets base * facteur-salaire * facteur-education * facteur-personnalite * facteur-sensibilisation
+
+    repeat round taux-production-dechets [
+      hatch-dechets 1 [
+        setxy xcor + random-float 1 - 0.5 ycor + random-float 1 - 0.5
         set color brown
+        set shape "circle"
+        set size 0.5
       ]
-      [
-        ifelse dechet-type = "plastique" [
-          set color blue
-        ]
-        [
-          ifelse dechet-type = "papier" [
-            set color white
-          ]
-          [
-            ifelse dechet-type = "métal" [
-              set color gray
-            ]
-            [
-              set color black  ; Par défaut pour "divers"
-            ]
-          ]
-        ]
-      ]
-      set type-dechet dechet-type
-      set producteur-id self  ; Attribution de l'individu comme producteur du déchet
-      rt random 360
-      fd 1
     ]
-    ; Incrémenter la quantité de déchets de l'individu après avoir produit un déchet
-    set quantite-dechets quantite-dechets + 1  ; L'individu a produit un déchet de plus
   ]
 end
 
-to campagne-sensibilisation
-  ask individus [
-    if random-float 1 < 0.5 [
-      set sensibilise? true
-      set color cyan
+to sensibiliser-individus
+  ask agents-sensibilisateurs [
+    let cibles individus in-radius 5 with [niveau-sensibilisation < 1]
+    ask cibles [
+      set niveau-sensibilisation niveau-sensibilisation + 0.01
+      if niveau-sensibilisation > 1 [ set niveau-sensibilisation 1 ]
     ]
   ]
 end
 
 to collecte-dechets
   ask camions [
-    ; Collecte des déchets des individus proches
-    let individus-proches individus with [distance myself < 5]  ; Trouver les individus proches
-    ask individus-proches [
-      if quantite-dechets > 0 [  ; Si l'individu a des déchets à donner
-        let dechet-type one-of ["organique" "plastique" "papier" "métal" "divers"]  ; Choisir le type de déchet
-        ask myself [
-          set contenu fput dechet-type contenu  ; Le camion collecte le déchet
+    if charge-actuelle < capacite-max [
+      let dechets-proches dechets in-radius 3
+      if any? dechets-proches [
+        let a-ramasser min list (capacite-max - charge-actuelle) (count dechets-proches)
+        ask n-of a-ramasser dechets-proches [
+          die
         ]
-        set quantite-dechets quantite-dechets - 1  ; L'individu perd un déchet
+        set charge-actuelle charge-actuelle + a-ramasser
+        set total-dechets-collectes total-dechets-collectes + a-ramasser
+      ]
+    ]
+
+    if charge-actuelle >= capacite-max [
+      face destination
+      fd 1
+      if distance destination < 1 [
+        set charge-actuelle 0
       ]
     ]
   ]
 end
 
-to envoyer-centres
+to-report stats-dechets-collectes
+  let total 0
+  let par-camion []
+
+  ;; Calcul du total des déchets collectés et création de la liste des camions
   ask camions [
-    move-to one-of centres-tri
-    ; Transférer les déchets collectés vers le centre de tri
-    ask one-of centres-tri [
-      ; Compter les déchets collectés et mettre à jour le stock du centre
-      set stock-dechets (word
-                          "organique: " (count (dechets with [type-dechet = "organique" and member? self [producteur-id] of dechets]))
-                         ", plastique: " (count (dechets with [type-dechet = "plastique" and member? self [producteur-id] of dechets]))
-                         ", papier: " (count (dechets with [type-dechet = "papier" and member? self [producteur-id] of dechets]))
-                         ", métal: " (count (dechets with [type-dechet = "métal" and member? self [producteur-id] of dechets]))
-                         ", divers: " (count (dechets with [type-dechet = "divers" and member? self [producteur-id] of dechets])) )
-    ]
-    ; Vider le contenu du camion après le dépôt
-    set contenu []
+    set total total + total-dechets-collectes
+    set par-camion lput (word "Camion " who ": " total-dechets-collectes) par-camion
   ]
+
+  ;; Construire une chaîne de texte pour les camions
+  let par-camion-text ""
+  foreach par-camion [
+    let camion-text ?
+    ifelse par-camion-text = "" [
+      set par-camion-text camion-text
+    ] [
+      set par-camion-text (word par-camion-text " - " camion-text)
+    ]
+  ]
+
+  ;; Générer le texte final du rapport
+  let report-text (word "Total collecté: " total " | " par-camion-text)
+
+  report report-text
+end
+
+to plot-total-dechets-collectes
+  set-current-plot "Déchets collectés"
+  set-current-plot-pen "total"
+  plot sum [total-dechets-collectes] of camions
+end
+
+to plot-dechets-restants
+  set-current-plot "Déchets restants"
+  set-current-plot-pen "restants"
+  plot count dechets
 end
 
 to export-data
-  ; Calculer l'année à partir des ticks
-  let year (floor ticks / 365)  ; Année (approximée sur 365 jours)
+  let headers ["id" "age" "situation-matrimoniale" "nombre-repas" "salaire" "condition-physique"
+               "moyen-deplacement" "personnalite" "type-repas" "quartier" "compagnie-habituelle"
+               "statut-social" "niveau-etude" "metier" "hobbies" "milieux-frequente"
+               "niveau-sensibilisation" "taux-production-dechets" "lieu-assigné"]
 
-  ; Calculer le mois à partir des ticks
-  let month (1 + (floor (ticks mod 365) / 30))  ; Mois approximatif (environ 30 jours par mois)
+  let rows (list headers)
 
-  ; Calculer le jour à partir des ticks
-  let day (ticks mod 30)  ; Jour dans le mois (reste des jours du mois)
+  ;; Obtenir les lieux distincts
+  let lieux-distincts sort lieux
 
-  ; Créer une chaîne de caractères avec la date (format année-mois-jour)
-  let current-date (word year "-" month "-" day)
-
-  ; Ouvrir le fichier CSV
-  file-open "C:\\Users\\HEMIRA\\Documents\\simulation\\donnees_simulation.csv"
-
-  ; Écrire l'en-tête avec la date et l'heure d'exportation
-  file-print (word "Date d'exportation: " current-date)
-  file-print "ID,Age,Situation Matrimoniale,Nombre de Repas,Salaire,Condition Physique,Moyen de Déplacement,Personnalité,Type de Repas,Quartier,Compagnie Habituelle,Statut Social,Niveau d'Étude,Métier,Hobbies,Milieux Fréquentés,Quantité de Déchets"
-
-  ; Écrire les données de chaque individu sous forme de tableau
-  ask individus [
-    file-print (word who "," age "," situation-matrimoniale "," nombre-repas "," salaire "," condition-physique "," moyen-deplacement "," personnalite "," type-repas "," quartier "," compagnie-habituelle "," statut-social "," niveau-etude "," metier "," hobbies "," milieux-frequentes "," quantite-dechets)
+  foreach lieux-distincts [ lieu-actuel ->
+    let individus-dans-lieu individus with [lieu-assigné = lieu-actuel]
+    ask individus-dans-lieu [
+      let row (list (word who)
+                    age
+                    situation-matrimoniale
+                    nombre-repas
+                    salaire
+                    condition-physique
+                    moyen-deplacement
+                    personnalite
+                    type-repas
+                    quartier
+                    compagnie-habituelle
+                    statut-social
+                    niveau-etude
+                    metier
+                    hobbies
+                    milieux-frequente
+                    niveau-sensibilisation
+                    taux-production-dechets
+                    [nom-lieu] of lieu-actuel)
+      set rows lput row rows
+    ]
   ]
 
-  ; Fermer le fichier une fois l'écriture terminée
-  file-close
-end
-
-to update-graph
-  set-current-plot "Évolution des déchets"
-
-  ; Affichage du nombre de déchets par type
-  set-current-plot-pen "organique"
-  plot count dechets with [type-dechet = "organique"]
-
-  set-current-plot-pen "plastique"
-  plot count dechets with [type-dechet = "plastique"]
-
-  set-current-plot-pen "papier"
-  plot count dechets with [type-dechet = "papier"]
-
-  set-current-plot-pen "métal"
-  plot count dechets with [type-dechet = "métal"]
-
-  set-current-plot-pen "divers"
-  plot count dechets with [type-dechet = "divers"]
+  file-close-all
+  let filename (word "individus_export_tick_" ticks ".csv")
+  csv:to-file filename rows
+  user-message (word "Exportation terminée : " filename)
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-895
+908
 10
-1479
-595
+1485
+588
 -1
 -1
-17.455
+17.242424242424242
 1
 10
 1
@@ -267,25 +290,25 @@ ticks
 30.0
 
 SLIDER
-188
-101
-360
-134
+204
+145
+376
+178
 nb-individus
 nb-individus
 10
 500
-50.0
+370.0
 10
 1
 NIL
 HORIZONTAL
 
 BUTTON
-48
-63
-120
-99
+56
+142
+128
+178
 setup
 setup
 NIL
@@ -299,30 +322,13 @@ NIL
 1
 
 BUTTON
-48
-123
-122
-157
+56
+202
+130
+236
 go
 go
 T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-48
-184
-169
-217
-produire-dechets
-produire-dechets
-NIL
 1
 T
 OBSERVER
@@ -333,11 +339,11 @@ NIL
 1
 
 PLOT
-351
-328
-832
-604
-Évolution des déchets
+605
+373
+877
+583
+Déchets restants
 Temps
 Quantité de déchets
 0.0
@@ -346,81 +352,26 @@ Quantité de déchets
 10.0
 true
 true
-"" "plot count dechets with [type-dechet = \"organique\"]\nplot count dechets with [type-dechet = \"plastique\"]\nplot count dechets with [type-dechet = \"papier\"]\nplot count dechets with [type-dechet = \"métal\"]\nplot count dechets with [type-dechet = \"divers\"]"
+"" "plot-dechets-restants"
 PENS
-"organique" 1.0 0 -16777216 true "" ""
-"plastique" 1.0 0 -7500403 true "" ""
-"papier" 1.0 0 -1184463 true "" ""
-"métal" 1.0 0 -13345367 true "" ""
-"divers" 1.0 0 -2674135 true "" ""
-
-BUTTON
-184
-238
-347
-271
-campagne-sensibilisation
-campagne-sensibilisation
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-185
-185
-302
-218
-collecte-dechets
-collecte-dechets
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-48
-237
-165
-270
-envoyer-centres
-envoyer-centres
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
+"restants" 1.0 0 -16777216 true "" ""
 
 MONITOR
-396
-95
-565
-140
+437
+137
+606
+182
 quantite-dechets
-sum [quantite-dechets] of individus
+sum [length dechets-collected] of camions
 17
 1
 11
 
 BUTTON
-598
-95
-736
-141
+688
+191
+826
+237
 exporter-données
 export-data\n
 NIL
@@ -433,14 +384,47 @@ NIL
 NIL
 1
 
+SLIDER
+204
+197
+376
+230
+nb-camions
+nb-camions
+1
+10
+7.0
+1
+1
+NIL
+HORIZONTAL
+
 PLOT
-24
-394
-337
-605
-Déchets produits
-NIL
-NIL
+311
+373
+586
+584
+Déchets collectés
+Ticks
+Camions utilisés
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" "plot-total-dechets-collectes"
+PENS
+"total" 1.0 0 -16777216 true "" "plot count turtles"
+
+PLOT
+18
+372
+293
+585
+Quantité de déchets
+Ticks
+Total déchets produits
 0.0
 10.0
 0.0
@@ -449,7 +433,57 @@ true
 false
 "" ""
 PENS
-"Total" 1.0 0 -16777216 true "" "plot count turtles"
+"Déchets produits" 1.0 0 -16777216 true "" "plot count turtles"
+
+MONITOR
+438
+192
+606
+237
+Total déchets
+stats-dechets-collectes
+17
+1
+11
+
+MONITOR
+661
+257
+855
+302
+quantit-dechet-produits-marché
+sum [length dechets-collected] of camions with [distance one-of lieux with [type-lieu = \"marché\"] < 20]
+17
+1
+11
+
+MONITOR
+319
+291
+514
+336
+quantit-dechet-produits-quartier
+sum [length dechets-collected] of camions with [distance one-of lieux with [type-lieu = \"quartier\"] < 20]
+17
+1
+11
+
+BUTTON
+686
+134
+826
+178
+Afficher stats collecte
+afficher-stats-collecte
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
